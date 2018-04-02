@@ -64,7 +64,8 @@
 ;; Startup folder.
 ;;
 
-(setq default-directory "D:\\machine2\\oxpig\\oxc\\")
+;(setq default-directory "D:\\machine2\\oxpig\\oxc\\")
+(setq default-directory "D:\\fpga\\vga\\")
 
 ;;---------------------------------------------------------------------------
 ;;
@@ -161,8 +162,33 @@
 ;;
 
 (defun my-org-mode-hook ()
-  (local-set-key (kbd "C-/") 'org-todo))
+  (local-set-key (kbd "C-/") 'org-todo)
+  (face-remap-add-relative 'font-lock-comment-face '((:foreground "Ivory4"))))
 (add-hook 'org-mode-hook 'my-org-mode-hook)
+
+(setq org-todo-keywords
+      '((sequence "TODO" "|" "DONE" "PARKED" "DROPPED")))
+
+(setq org-support-shift-select t)
+
+;;---------------------------------------------------------------------------
+;;
+;; VHDL mode tweaks.
+;;
+
+;; Circumnavigate an obscure bug/issue with VHDL mode whereby pressing the tab
+;; key when a region is active deletes the region. I blame, without deep
+;; foundation, vhdl-prepare-search-2. See vhdl-mode.el.
+(defun my-vhdl-electric-tab ()
+  (interactive)
+   (cond
+    ((use-region-p)
+    (vhdl-indent-region (region-beginning) (region-end) nil))
+   (t (vhdl-electric-tab))))
+
+(defun my-vhdl-mode-hook ()
+  (local-set-key (kbd "<tab>") 'my-vhdl-electric-tab))
+(add-hook 'vhdl-mode-hook 'my-vhdl-mode-hook)
 
 ;;---------------------------------------------------------------------------
 ;;
@@ -188,14 +214,20 @@
 ;; Compilation.
 ;;
 
+(defun my-folder-of-nearest-makefile ()
+  (locate-dominating-file "." "Makefile"))
+
 (defun my-compile-command ()
   (interactive)
   (save-buffer)
-  (compile "make -k "))
+  (compile (format "make -k -C %s" (my-folder-of-nearest-makefile))))
 
 (require 'compile)
 (add-to-list 'compilation-error-regexp-alist
              '("\\(\\([a-zA-Z]:\\)?[^:(\t\n]+\\)(\\([0-9]+\\)): \\(error\\|warning\\) C[0-9]+:" 1 3) t)
+(push '("^\\(.*\\)(\\([0-9]+\\),\\([0-9]+\\)): error" 1 2 3 2) compilation-error-regexp-alist)
+(push '("^\\(.*\\)(\\([0-9]+\\),\\([0-9]+\\)): warning" 1 2 3 1) compilation-error-regexp-alist)
+(push '("^\\(.*\\)(\\([0-9]+\\),\\([0-9]+\\)): note" 1 2 3 2) compilation-error-regexp-alist)
 
 (setq compile-command "make -k ")
 (setq compilation-read-command nil)
@@ -205,7 +237,7 @@
 (defun my-rebuild-command ()
   (interactive)
   (save-buffer)
-  (compile "make -k rebuild"))
+  (compile (format "make -k -C %s rebuild" (my-folder-of-nearest-makefile))))
 
 (defun my-clean-build-command ()
   (interactive)
@@ -301,6 +333,26 @@
       (server-edit)
     (kill-this-buffer)))
 
+(defun my-goto-line-column()
+  "Goto a line and optional column"
+  (interactive)
+  (let ((text (read-from-minibuffer "Goto line[,column]: ")))
+    (let ((pair (split-string text ",")))
+      (unless (string= "" (car pair))
+        (let ((line (string-to-number (car pair))))
+          (unless (zerop line)
+            (goto-line line))))
+      (let ((tail (cdr pair)))
+        (unless (null tail)
+          (let ((column (string-to-number (car tail))))
+            (unless (zerop column)
+              (move-to-column (1- column)))))))))
+
+(defun save-as()
+  "Save a buffer with a new name. Invokes write-file, which I rarely remember."
+  (interactive)
+  (call-interactively #'write-file))
+
 (global-unset-key (kbd "C-/"))
 (global-unset-key (kbd "C-y"))
 (global-unset-key (kbd "C-w"))
@@ -334,6 +386,10 @@
 (global-set-key (kbd "<kp-multiply>") 'enlarge-window-horizontally)
 (global-set-key (kbd "<kp-divide>") 'shrink-window-horizontally)
 
+(define-key input-decode-map [?\C-m] [C-m])
+(global-set-key (kbd "C-S-m") 'start-kbd-macro)
+(global-set-key (kbd "<C-m>") 'kmacro-end-or-call-macro)
+
 ;; Escape ALWAYS quits. Ctrl-g can bite me.
 (define-key minibuffer-local-map [escape] 'minibuffer-keyboard-quit)
 (define-key minibuffer-local-map (kbd "C-g") 'use-escape-to-cancel)
@@ -346,7 +402,7 @@
 (define-key minibuffer-local-isearch-map [escape] 'minibuffer-keyboard-quit)
 (define-key minibuffer-local-isearch-map (kbd "C-g") 'use-escape-to-cancel)
 (global-set-key [escape] 'keyboard-quit)
-(global-set-key (kbd "C-g") 'goto-line)
+(global-set-key (kbd "C-g") 'my-goto-line-column)
 
 ;; Now, Emacs. I win binding contests vs specific modes.
 (defvar my-keys-minor-mode-map
@@ -396,6 +452,35 @@
 
 ;;---------------------------------------------------------------------------
 ;;
+;; Assembler mode.
+;;
+
+(autoload 'my-asm-mode "my-asm-mode" "My-Asm mode." t)
+(add-to-list 'auto-mode-alist '("\\.s\\'" . my-asm-mode))
+(add-to-list 'auto-mode-alist '("\\.i\\'" . my-asm-mode))
+
+(defun asmnuke()
+  "Unload and reapply my-asm mode."
+  (interactive)
+  (unload-feature 'my-asm-mode)
+  (my-asm-mode))
+
+;;---------------------------------------------------------------------------
+;;
+;; FTL mode.
+;;
+
+(autoload 'ftl-mode "ftl-mode" "FTL mode." t)
+(add-to-list 'auto-mode-alist '("\\.ftl\\'" . ftl-mode))
+
+(defun ftlnuke()
+  "Unload and reapply FTL mode."
+  (interactive)
+  (unload-feature 'ftl-mode)
+  (ftl-mode))
+
+;;---------------------------------------------------------------------------
+;;
 ;; Configuration from M-x customize-face et al.
 ;; Note: C-u M-x what-cursor-position = display face
 ;;
@@ -405,7 +490,7 @@
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
- '(package-selected-packages (quote (multiple-cursors))))
+ '(package-selected-packages (quote (flycheck multiple-cursors))))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
@@ -423,6 +508,8 @@
  '(org-level-1 ((t (:inherit outline-1 :foreground "#49c" :height 1.2))))
  '(org-level-2 ((t (:inherit outline-2 :foreground "#ccc" :height 1.1))))
  '(org-level-3 ((t (:inherit outline-3 :foreground "#7b7"))))
+ '(org-level-4 ((t (:inherit outline-4 :foreground "#7b7"))))
+ '(org-level-5 ((t (:inherit outline-5 :foreground "#7b7"))))
  '(show-paren-match ((t (:background "OliveDrab3" :foreground "#000"))))
  '(whitespace-empty ((t (:background "#633" :foreground "#fc5"))))
  '(whitespace-trailing ((t (:background "#633" :foreground "#fc5")))))
